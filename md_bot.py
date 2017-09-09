@@ -64,7 +64,7 @@ def render_line_delta(side_name, delta):
     else:
         direction = ''
 
-    return '{0}: {1} @ {2}{3}'.format(side_name, delta.quantity, delta.price,
+    return '{0}: {1} @ {2:.2f}{3}'.format(side_name, delta.quantity, delta.price,
             direction)
 
 def publish_change(team, bid_delta, ask_delta):
