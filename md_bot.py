@@ -1,4 +1,5 @@
 import cix_client
+import collections
 import json
 import os
 import requests
@@ -48,29 +49,31 @@ else:
         sys.err.write('non-positive refresh interval\n')
         sys.exit(1)
 
-def get_updated_lines(old_md, new_md):
-    lines = []
+class LineDirection:
+    FLAT = 0
+    UP = 1
+    DOWN = 2
 
-    for team, line in new_md.iteritems():
-        updated = False
+LineDelta = collections.namedtuple('LineDelta', ['direction', 'price', 'quantity'])
 
-        try:
-            old_line = old_md[team]
-        except KeyError:
-            updated = True
-        else:
-            updated = line['bid'] != old_line['bid'] or \
-                      line['ask'] != old_line['ask']
+def render_line_delta(side_name, delta):
+    if delta.direction == LineDirection.UP:
+        direction = ' :arrow_up_small:'
+    elif delta.direction == LineDirection.DOWN:
+        direction = ' :arrow_down_small:'
+    else:
+        direction = ''
 
-        if updated:
-            lines.append((team, line))
+    return '{0}: {1} @ {2}{3}'.format(side_name, delta.quantity, delta.price,
+            direction)
 
-    return lines
+def publish_change(team, bid_delta, ask_delta):
+    team_link = '<https://caseinsensitive.org/ncaa/game/{0}/team/{1}/?start_tab=stock_tab|{1}>'.format(game_id, team)
+    bid_text = render_line_delta('Bid', bid_delta)
+    ask_text = render_line_delta('Ask', ask_delta)
 
-message_template = '<https://caseinsensitive.org/ncaa/game/{0}/team/{1}/?start_tab=stock_tab|{1}> \nBid: {2} @ {3:.2f}\nAsk: {4} @ {5:.2f}'
-def publish_change(team, line):
-    message = message_template.format(game_id, team, line['bid_size'],
-            line['bid'], line['ask_size'], line['ask'])
+    message = '\n'.join((team_link, bid_text, ask_text))
+
     data = {
         'text': message
     }
@@ -78,6 +81,38 @@ def publish_change(team, line):
 
     if response.status_code != 200:
         sys.err.write('error publishing change: {0}\n'.format(response.text))
+
+def line_delta(old_md, new_md, side):
+    old_price = old_md.get(side, 0.0)
+    new_price = new_md.get(side, 0.0)
+    new_quantity = new_md.get('{0}_size'.format(side), 0)
+
+    if new_price > old_price:
+        direction = LineDirection.UP
+    elif new_price < old_price:
+        direction = LineDirection.DOWN
+    else:
+        direction = LineDirection.FLAT
+
+    return LineDelta(price=new_price, quantity=new_quantity, direction=direction)
+
+def publish_updated_lines(old_md, new_md):
+    lines = []
+
+    for team, line in new_md.iteritems():
+        # Ignore lines that clear out when games start
+        if not line.get('bid', 0.0) and not line.get('ask', 0.0):
+            continue
+
+        old_line = old_md.get(team, {})
+        bid_delta = line_delta(old_line, line, 'bid')
+        ask_delta = line_delta(old_line, line, 'ask')
+
+        if bid_delta.direction != LineDirection.FLAT or \
+                ask_delta.direction != LineDirection.FLAT:
+            publish_change(team, bid_delta, ask_delta)
+
+    return lines
 
 if __name__ == '__main__':
     client = cix_client.CixClient(apid)
@@ -90,8 +125,7 @@ if __name__ == '__main__':
             continue
 
         if old_md is not None:
-            for team, line in get_updated_lines(old_md, md):
-                publish_change(team, line)
+            publish_updated_lines(old_md, md)
 
         old_md = md
             
