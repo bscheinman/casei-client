@@ -40,6 +40,16 @@ class CixClient(object):
     def all_market_data(self):
         return self.do_api_call('market_data')
 
+    def recent_executions(self, mine_only=False, since=None):
+        data = {
+            'mine_only': bool(mine_only)
+        }
+
+        if since is not None:
+            data['since'] = since
+
+        return self.do_api_call('executions', data=data)
+
     def get_book(self, team, depth=None):
         data = { 'team': team }
         if depth is not None:
