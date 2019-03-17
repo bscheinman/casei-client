@@ -31,8 +31,11 @@ class CixClient(object):
     def my_orders(self):
         return self.do_api_call('open_orders')
 
-    def my_positions(self):
-        return self.do_api_call('positions')
+    def my_positions(self, full_names=False):
+        args = {
+            'name': 'full' if full_names else 'abbrev',
+        }
+        return self.do_api_call('positions', args)
 
     def my_markets(self):
         return self.do_api_call('my_markets')
